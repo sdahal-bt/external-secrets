@@ -219,6 +219,7 @@ type SecretStoreProvider struct {
 	// +optional
 	Ngrok *NgrokProvider `json:"ngrok,omitempty"`
 
+	// +optional
 	Smop *SmopProvider `json:"smop,omitempty"`
 }
 
