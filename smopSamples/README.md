@@ -22,8 +22,19 @@
 5. If the above command doesn't return anything, replace the CRD and try it again
  `kubectl replace -f config/crds/bases/external-secrets.io_secretstores.yaml`
 
-6. Create a SMoP SecretStore
+6. Create smop-api-token
+`kubectl create secret generic smop-api-token --from-literal=token=<YOUR_PAT_TOKEN>`
+
+7. Create a SMoP SecretStore
 `kubectl apply -f smopSamples/smop_secretstore.yaml`
 
-7. Create SMoP External Secret
+8. Create SMoP External Secret
 `kubectl apply -f smopSamples/smop_externalsecret.yaml`
+
+
+
+#### Continuous development
+1. Build docker image `make docker.build`
+2. load image to kind `kind load docker-image oci.external-secrets.io/external-secrets/external-secrets:v0.20.4`
+3. Restart deployment `kubectl rollout restart deployment -n external-secrets`
+4. Apply external secret `kubectl apply -f smopSamples/smop_externalsecret.yaml`

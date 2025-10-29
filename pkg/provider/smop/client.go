@@ -18,8 +18,8 @@ var ErrNotImplemented = errors.New("not implemented")
 
 // Client implements the SecretsClient interface for SMoP.
 type Client struct {
-	smopClient      SecretsClientInterface
-	store     *esv1.SmopProvider
+	smopClient SecretsClientInterface
+	store      *esv1.SmopProvider
 }
 
 // SecretsClientInterface defines the required SMoP Client methods.
@@ -27,7 +27,7 @@ type SecretsClientInterface interface {
 	BaseURL() *url.URL
 	SetBaseURL(urlStr string) error
 	GetSecret(ctx context.Context, name string, folderPath *string) (*cg.KV, error)
-	GetSecrets(ctx context.Context, folderPath *string) (*[]cg.KVListItem, error)
+	GetSecrets(ctx context.Context, folderPath *string) ([]cg.KVListItem, error)
 }
 
 // Validate checks if the client is configured correctly
@@ -47,22 +47,41 @@ func (c *Client) Validate() (esv1.ValidationResult, error) {
 }
 
 // GetSecret returns a single secret from the SMOP provider
-// 	if GetSecret returns an error with type NoSecretError
-// 	then the secret entry will be deleted depending on the deletionPolicy.
+//
+//	if GetSecret returns an error with type NoSecretError
+//	then the secret entry will be deleted depending on the deletionPolicy.
 func (c *Client) GetSecret(ctx context.Context, ref esv1.ExternalSecretDataRemoteRef) ([]byte, error) {
 	folderPath := c.store.FolderPath
-	
+
 	secret, err := c.smopClient.GetSecret(ctx, ref.Key, &folderPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get secret %w", err)
 	}
 
-	secretBytes, err := json.Marshal(secret.Secret)
-    if err != nil {
-        return nil, fmt.Errorf("failed to marshal secret: %w", err)
-    }
+	// Debug: print the entire secret structure
+	fullSecretBytes, _ := json.MarshalIndent(secret, "", "  ")
+	fmt.Printf("Full secret response: %s\n", string(fullSecretBytes))
 
-    return secretBytes, nil
+	// Extract value from RedactedMap
+	if secret.Secret == nil {
+		return nil, fmt.Errorf("secret value is nil")
+	}
+
+	// If there's a property key in the remote reference, use it
+	if ref.Property != "" {
+		if value, ok := secret.Secret[ref.Property]; ok {
+			return []byte(fmt.Sprintf("%v", value)), nil
+		}
+		return nil, fmt.Errorf("property %s not found in secret", ref.Property)
+	}
+
+	// If no property specified, return the entire secret as JSON
+	secretBytes, err := json.Marshal(secret.Secret)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal secret: %w", err)
+	}
+
+	return secretBytes, nil
 }
 
 /////////////////////////
@@ -75,7 +94,7 @@ func (c *Client) PushSecret(ctx context.Context, secret *corev1.Secret, data esv
 }
 
 // DeleteSecret will delete the secret from the SMOP provider.
-func (c *Client) DeleteSecret(ctx context.Context, remoteRef esv1.PushSecretRemoteRef) error{
+func (c *Client) DeleteSecret(ctx context.Context, remoteRef esv1.PushSecretRemoteRef) error {
 	return ErrNotImplemented
 }
 

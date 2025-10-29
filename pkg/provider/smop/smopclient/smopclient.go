@@ -16,8 +16,8 @@ import (
 type SMOPClient struct {
 	client *cg.ClientWithResponses
 
-	baseURL		*url.URL
-	smopToken	string
+	baseURL   *url.URL
+	smopToken string
 }
 
 // APIError represents an error response from the SMOP API
@@ -53,7 +53,7 @@ func NewSMOPClient(server, token string, opts ...cg.ClientOption) (*SMOPClient, 
 	}
 
 	return &SMOPClient{
-		client: client,
+		client:    client,
 		smopToken: token,
 	}, nil
 }
@@ -99,11 +99,42 @@ func (c *SMOPClient) GetSecret(ctx context.Context, name string, folderPath *str
 		return nil, fmt.Errorf("failed to fetch secret %q at %q: %w", name, path, err)
 	}
 
-	return handleAPIResponse[cg.KV](resp, folderPath)
+	// read secret
+	secretBytes, err := readResponseBody(resp)
+	if err != nil {
+		path := getPathString(folderPath)
+		return nil, fmt.Errorf("failed to read fetch secret response %q at %q: %w", name, path, err)
+	}
+
+	// handle secret response
+	path := getPathString(folderPath)
+	respContentType := resp.Header.Get("Content-Type")
+	isJSON := strings.Contains(respContentType, "json")
+
+	if resp.StatusCode == http.StatusOK && isJSON {
+		var kv cg.KV
+
+		if err = json.Unmarshal(secretBytes, &kv); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal response from fetch %q at %q: %w", name, path, err)
+		}
+
+		return &kv, nil
+	}
+
+	fullKvPath := fmt.Sprintf("%s/%s", path, name)
+	// Try to parse error response
+	if isJSON {
+		if err := parseAPIErrorResponse(secretBytes, fullKvPath, resp.StatusCode); err != nil {
+			return nil, err
+		}
+	}
+
+	// Fallback error if we can't parse the response
+	return nil, createAPIError(resp.StatusCode, respContentType, fullKvPath)
 }
 
 // GetSecrets fetches secrets at the specified `folderPath`
-func (c *SMOPClient) GetSecrets(ctx context.Context, folderPath *string) (*[]cg.KVListItem, error) {
+func (c *SMOPClient) GetSecrets(ctx context.Context, folderPath *string) ([]cg.KVListItem, error) {
 	params := &cg.GetKvsParams{
 		Path: folderPath,
 	}
@@ -120,42 +151,42 @@ func (c *SMOPClient) GetSecrets(ctx context.Context, folderPath *string) (*[]cg.
 		return nil, fmt.Errorf("failed to fetch secrets: %w", err)
 	}
 
-	return handleAPIResponse[[]cg.KVListItem](resp, folderPath)
-}
+	// read kv list
+	listBytes, err := readResponseBody(resp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read list secrets response: %w", err)
+	}
 
-// handleAPIResponse is a generic helper for handling API responses with JSON data
-func handleAPIResponse[T any](resp *http.Response, folderPath *string) (*T, error) {
-    // read response body
-    responseBytes, err := readResponseBody(resp)
-    if err != nil {
-        return nil, fmt.Errorf("failed to read SMoP API response: %w", err)
-    }
-
+	// handle list response
 	path := getPathString(folderPath)
-    respContentType := resp.Header.Get("Content-Type")
-    isJSON := strings.Contains(respContentType, "json")
+	respContentType := resp.Header.Get("Content-Type")
+	isJSON := strings.Contains(respContentType, "json")
 
-    if resp.StatusCode == http.StatusOK && isJSON {
-        var dest struct {
-            Data  T      `json:"data"`
-            Error string `json:"error,omitempty"`
-        }
-        if err = json.Unmarshal(responseBytes, &dest); err != nil {
-            return nil, fmt.Errorf("failed to unmarshal SMoP API response: %w", err)
-        }
+	if resp.StatusCode == http.StatusOK && isJSON {
+		var dest struct {
+			Data  []cg.KVListItem `json:"data"`
+			Error string          `json:"error,omitempty"`
+		}
+		if err = json.Unmarshal(listBytes, &dest); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal response from list secrets at %q: %w", path, err)
+		}
 
-		// --TODO: need to check for empty or nil data?
+		// Empty folder is valid - return empty list
+		if len(dest.Data) == 0 {
+			return []cg.KVListItem{}, nil
+		}
 
-        return &dest.Data, nil
-    }
+		return dest.Data, nil
+	}
 
-    // Try to parse error response
-    if isJSON {
-        if err := parseAPIErrorResponse(responseBytes, path, resp.StatusCode); err != nil {
-            return nil, err
-        }
-    }
+	// Try to parse error response
+	if isJSON {
+		if err := parseAPIErrorResponse(listBytes, path, resp.StatusCode); err != nil {
+			return nil, err
+		}
+	}
 
-    // Fallback error if we can't parse the response
-    return nil, createAPIError(resp.StatusCode, respContentType, path)
+	// Fallback error if we can't parse the response
+	return nil, createAPIError(resp.StatusCode, respContentType, path)
+
 }
