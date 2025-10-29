@@ -16,7 +16,7 @@ DOCKER ?= docker
 all: $(addprefix build-,$(ARCH))
 
 # Image registry for build/push image targets
-export IMAGE_REGISTRY ?= ghcr.io
+export IMAGE_REGISTRY ?= oci.external-secrets.io
 export IMAGE_REPO     ?= external-secrets/external-secrets
 export IMAGE_NAME ?= $(IMAGE_REGISTRY)/$(IMAGE_REPO)
 
@@ -45,7 +45,7 @@ export VERSION := $(shell git describe --dirty --always --tags --exclude 'helm*'
 endif
 
 TAG_SUFFIX ?=
-export IMAGE_TAG ?= $(VERSION)$(TAG_SUFFIX)
+export IMAGE_TAG ?= v0.20.4 #$(VERSION)$(TAG_SUFFIX)
 
 # ====================================================================================
 # Colors
