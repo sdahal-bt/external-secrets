@@ -3,7 +3,6 @@ package smop
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/url"
 	"time"
@@ -14,7 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-var ErrNotImplemented = errors.New("not implemented")
+const ErrMsgNotImplemented = "not implemented: %s"
 
 // Client implements the SecretsClient interface for SMoP.
 type Client struct {
@@ -84,33 +83,56 @@ func (c *Client) GetSecret(ctx context.Context, ref esv1.ExternalSecretDataRemot
 	return secretBytes, nil
 }
 
+// GetAllSecrets retrieves all secrets from SMoP that match the given criteria.
+func (c *Client) GetAllSecrets(ctx context.Context, ref esv1.ExternalSecretFind) (map[string][]byte, error) {
+	folderPath := c.store.FolderPath
+
+	secrets, err := c.smopClient.GetSecrets(ctx, &folderPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list secrets: %w", err)
+	}
+
+	list := map[string][]byte{}
+
+	for _, sec := range secrets {
+		fullSecret, err := c.smopClient.GetSecret(ctx, sec.Path, &folderPath)
+		if err != nil || fullSecret == nil {
+			return nil, fmt.Errorf("failed to get secret %s: %w", sec.Path, err)
+		}
+
+		secretBytes, err := json.Marshal(fullSecret.Secret)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal secret: %w", err)
+		}
+
+		list[sec.Path] = secretBytes
+	}
+
+	return list, nil
+}
+
 /////////////////////////
 // NOT YET IMPLEMENTED //
 /////////////////////////
 
 // PushSecret will write a single secret into the SMOP provider.
 func (c *Client) PushSecret(ctx context.Context, secret *corev1.Secret, data esv1.PushSecretData) error {
-	return ErrNotImplemented
+	return fmt.Errorf(ErrMsgNotImplemented, "PushSecret")
 }
 
 // DeleteSecret will delete the secret from the SMOP provider.
 func (c *Client) DeleteSecret(ctx context.Context, remoteRef esv1.PushSecretRemoteRef) error {
-	return ErrNotImplemented
+	return fmt.Errorf(ErrMsgNotImplemented, "DeleteSecret")
 }
 
 // SecretExists checks if a secret is already present in the SMOP provider at the given location.
 func (c *Client) SecretExists(ctx context.Context, remoteRef esv1.PushSecretRemoteRef) (bool, error) {
-	return false, ErrNotImplemented
+	return false, fmt.Errorf(ErrMsgNotImplemented, "SecretExists")
 }
 
 // GetSecretMap returns multiple k/v pairs from the SMOP provider.
 func (c *Client) GetSecretMap(ctx context.Context, ref esv1.ExternalSecretDataRemoteRef) (map[string][]byte, error) {
-	return nil, ErrNotImplemented
-}
-
-// GetAllSecrets retrieves all secrets from SMoP that match the given criteria.
-func (c *Client) GetAllSecrets(ctx context.Context, ref esv1.ExternalSecretFind) (map[string][]byte, error) {
-	return nil, ErrNotImplemented
+	return nil, fmt.Errorf(ErrMsgNotImplemented, "GetSecretMap")
 }
 
 // Close implements cleanup operations for the SMoP client.
